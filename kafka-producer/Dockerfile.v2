@@ -1,0 +1,22 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copier d'abord requirements.txt pour optimiser le cache Docker
+COPY requirements.txt .
+
+# Installer les dépendances
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code
+COPY kafka_producer_v2.py .
+
+# Variables d'environnement par défaut
+ENV CITY=Paris
+ENV COUNTRY=France
+ENV KAFKA_BROKER=kafka:9092
+ENV TOPIC=weather_stream
+
+# Le producteur v2 utilise l'API de géocodage d'Open-Meteo
+# Peut être lancé avec des arguments ou variables d'environnement
+CMD ["python", "kafka_producer_v2.py"]

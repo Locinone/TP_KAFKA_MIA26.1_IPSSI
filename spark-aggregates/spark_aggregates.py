@@ -26,10 +26,11 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, L
 
 
 def build_weather_stream_schema() -> StructType:
-    """Schema pour le topic weather_stream (données brutes)"""
+    """Schema pour le topic weather_stream (données brutes avec city/country)"""
     return StructType([
-        StructField("latitude", DoubleType(), True),
-        StructField("longitude", DoubleType(), True),
+        StructField("city", StringType(), True),
+        StructField("country", StringType(), True),
+        StructField("admin1", StringType(), True),  # région/état
         StructField("timestamp", LongType(), True),  # epoch seconds
         StructField("weather", StructType([
             StructField("temperature", DoubleType(), True),
@@ -102,8 +103,9 @@ def main() -> None:
         from_json(col("value").cast("string"), stream_schema).alias("data"),
         col("timestamp").alias("kafka_timestamp")
     ).select(
-        col("data.latitude").alias("latitude"),
-        col("data.longitude").alias("longitude"),
+        col("data.city").alias("city"),
+        col("data.country").alias("country"),
+        col("data.admin1").alias("admin1"),
         when(
             col("data.weather.time").isNotNull(), 
             to_timestamp(col("data.weather.time"))
@@ -145,24 +147,20 @@ def main() -> None:
         col("windspeed"),
         col("wind_alert_level"),
         col("heat_alert_level"),
-        col("latitude"),
-        col("longitude")
+        coalesce(col("city"), lit("Unknown")).alias("city"),
+        coalesce(col("country"), lit("Unknown")).alias("country"),
+        coalesce(col("admin1"), lit("")).alias("admin1")
     )
     
-    # Créer une colonne pour la ville (basée sur les coordonnées)
-    # Pour l'exemple, on utilise des zones géographiques simplifiées
-    joined_with_location = joined_df.withColumn(
-        "city",
-        when((col("latitude").between(48.8, 48.9)) & (col("longitude").between(2.3, 2.4)), "Paris")
-        .when((col("latitude").between(51.4, 51.6)) & (col("longitude").between(-0.2, 0.0)), "London")
-        .when((col("latitude").between(40.6, 40.8)) & (col("longitude").between(-74.1, -73.9)), "New York")
-        .otherwise("Other")
-    )
+    # Plus besoin de mapping coordonnées -> ville car on a déjà city/country
+    # Utiliser directement les données de géocodage
+    joined_with_location = joined_df
     
     # Agrégats sur fenêtre de 1 minute
     window_1min_df = joined_with_location.groupBy(
         window(col("event_time"), "1 minute", "30 seconds"),
-        col("city")
+        col("city"),
+        col("country")
     ).agg(
         # Alertes vent
         count(when(col("wind_alert_level") == "level_1", 1)).alias("wind_alerts_level1"),
@@ -184,6 +182,7 @@ def main() -> None:
         col("window.end").alias("window_end"),
         lit("1_minute").alias("window_size"),
         col("city"),
+        col("country"),
         col("wind_alerts_level1"),
         col("wind_alerts_level2"),
         col("heat_alerts_level1"),
@@ -198,7 +197,8 @@ def main() -> None:
     # Agrégats sur fenêtre de 5 minutes
     window_5min_df = joined_with_location.groupBy(
         window(col("event_time"), "5 minutes", "1 minute"),
-        col("city")
+        col("city"),
+        col("country")
     ).agg(
         # Alertes vent
         count(when(col("wind_alert_level") == "level_1", 1)).alias("wind_alerts_level1"),
@@ -220,6 +220,7 @@ def main() -> None:
         col("window.end").alias("window_end"),
         lit("5_minutes").alias("window_size"),
         col("city"),
+        col("country"),
         col("wind_alerts_level1"),
         col("wind_alerts_level2"),
         col("heat_alerts_level1"),

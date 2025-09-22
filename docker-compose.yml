@@ -35,6 +35,45 @@ services:
       kafka:
         condition: service_healthy
 
+  data-producer-london:
+    build:
+      context: ./kafka-producer
+      dockerfile: Dockerfile.v2
+    environment:
+      CITY: London
+      COUNTRY: United Kingdom
+      KAFKA_BROKER: kafka:9092
+      TOPIC: weather_stream
+    depends_on:
+      kafka:
+        condition: service_healthy
+  
+  data-producer-paris:
+    build:
+      context: ./kafka-producer
+      dockerfile: Dockerfile.v2
+    environment:
+      CITY: Paris
+      COUNTRY: France
+      KAFKA_BROKER: kafka:9092
+      TOPIC: weather_stream
+    depends_on:
+      kafka:
+        condition: service_healthy
+  
+  data-producer-new-york:
+    build:
+      context: ./kafka-producer
+      dockerfile: Dockerfile.v2
+    environment:
+      CITY: New York
+      COUNTRY: United States
+      KAFKA_BROKER: kafka:9092
+      TOPIC: weather_stream
+    depends_on:
+      kafka:
+        condition: service_healthy
+
   data-consumer:
     build:
       context: ./kafka-consumer
