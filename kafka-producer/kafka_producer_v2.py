@@ -34,6 +34,150 @@ while producer is None:
         time.sleep(2)
 
 
+def get_region_from_country(country):
+    """
+    Détermine la région géographique pour le partitionnement HDFS
+    """
+    region_mapping = {
+        # Europe
+        "France": "Europe",
+        "United Kingdom": "Europe", 
+        "Germany": "Europe",
+        "Spain": "Europe",
+        "Italy": "Europe",
+        "Netherlands": "Europe",
+        "Belgium": "Europe",
+        "Switzerland": "Europe",
+        "Austria": "Europe",
+        "Sweden": "Europe",
+        "Norway": "Europe",
+        "Denmark": "Europe",
+        "Finland": "Europe",
+        "Poland": "Europe",
+        "Czech Republic": "Europe",
+        "Hungary": "Europe",
+        "Romania": "Europe",
+        "Bulgaria": "Europe",
+        "Greece": "Europe",
+        "Portugal": "Europe",
+        "Ireland": "Europe",
+        
+        # Amérique du Nord
+        "United States": "North America",
+        "Canada": "North America",
+        "Mexico": "North America",
+        
+        # Amérique du Sud
+        "Brazil": "South America",
+        "Argentina": "South America",
+        "Chile": "South America",
+        "Colombia": "South America",
+        "Peru": "South America",
+        "Venezuela": "South America",
+        
+        # Asie
+        "China": "Asia",
+        "Japan": "Asia",
+        "India": "Asia",
+        "South Korea": "Asia",
+        "Thailand": "Asia",
+        "Singapore": "Asia",
+        "Malaysia": "Asia",
+        "Indonesia": "Asia",
+        "Philippines": "Asia",
+        "Vietnam": "Asia",
+        "Taiwan": "Asia",
+        "Hong Kong": "Asia",
+        
+        # Océanie
+        "Australia": "Oceania",
+        "New Zealand": "Oceania",
+        
+        # Afrique
+        "South Africa": "Africa",
+        "Egypt": "Africa",
+        "Nigeria": "Africa",
+        "Kenya": "Africa",
+        "Morocco": "Africa",
+        "Tunisia": "Africa",
+        "Algeria": "Africa",
+    }
+    
+    return region_mapping.get(country, "Other")
+
+
+def get_continent_from_country(country):
+    """
+    Détermine le continent pour le partitionnement HDFS
+    """
+    continent_mapping = {
+        # Europe
+        "France": "Europe",
+        "United Kingdom": "Europe",
+        "Germany": "Europe",
+        "Spain": "Europe",
+        "Italy": "Europe",
+        "Netherlands": "Europe",
+        "Belgium": "Europe",
+        "Switzerland": "Europe",
+        "Austria": "Europe",
+        "Sweden": "Europe",
+        "Norway": "Europe",
+        "Denmark": "Europe",
+        "Finland": "Europe",
+        "Poland": "Europe",
+        "Czech Republic": "Europe",
+        "Hungary": "Europe",
+        "Romania": "Europe",
+        "Bulgaria": "Europe",
+        "Greece": "Europe",
+        "Portugal": "Europe",
+        "Ireland": "Europe",
+        
+        # Amérique du Nord
+        "United States": "North America",
+        "Canada": "North America",
+        "Mexico": "North America",
+        
+        # Amérique du Sud
+        "Brazil": "South America",
+        "Argentina": "South America",
+        "Chile": "South America",
+        "Colombia": "South America",
+        "Peru": "South America",
+        "Venezuela": "South America",
+        
+        # Asie
+        "China": "Asia",
+        "Japan": "Asia",
+        "India": "Asia",
+        "South Korea": "Asia",
+        "Thailand": "Asia",
+        "Singapore": "Asia",
+        "Malaysia": "Asia",
+        "Indonesia": "Asia",
+        "Philippines": "Asia",
+        "Vietnam": "Asia",
+        "Taiwan": "Asia",
+        "Hong Kong": "Asia",
+        
+        # Océanie
+        "Australia": "Oceania",
+        "New Zealand": "Oceania",
+        
+        # Afrique
+        "South Africa": "Africa",
+        "Egypt": "Africa",
+        "Nigeria": "Africa",
+        "Kenya": "Africa",
+        "Morocco": "Africa",
+        "Tunisia": "Africa",
+        "Algeria": "Africa",
+    }
+    
+    return continent_mapping.get(country, "Unknown")
+
+
 def get_coordinates_from_city(city, country):
     """
     Utilise l'API de géocodage d'Open-Meteo pour obtenir les coordonnées
@@ -96,12 +240,19 @@ def fetch_weather_data_by_city(city, country):
         # Extraire les données météo actuelles
         current_weather = data.get('current_weather', {})
         
-        # Enrichir avec ville/pays et timestamp (SANS coordonnées dans le message final)
+        # Déterminer la région pour le partitionnement HDFS
+        region = get_region_from_country(location_info['country'])
+        
+        # Enrichir avec ville/pays, région et timestamp (SANS coordonnées dans le message final)
         weather_data = {
             "city": location_info['name'],
             "country": location_info['country'],
             "admin1": location_info.get('admin1', ''),
+            "region": region,  # Pour partitionnement HDFS
+            "continent": get_continent_from_country(location_info['country']),  # Pour partitionnement HDFS
             "timestamp": int(time.time()),
+            "date": time.strftime("%Y-%m-%d"),  # Pour partitionnement par date
+            "hour": time.strftime("%H"),  # Pour partitionnement par heure
             "weather": {
                 "temperature": current_weather.get('temperature'),
                 "windspeed": current_weather.get('windspeed'),

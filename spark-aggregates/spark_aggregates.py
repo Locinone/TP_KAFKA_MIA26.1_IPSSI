@@ -26,12 +26,16 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, L
 
 
 def build_weather_stream_schema() -> StructType:
-    """Schema pour le topic weather_stream (données brutes avec city/country)"""
+    """Schema pour le topic weather_stream avec informations de partitionnement HDFS"""
     return StructType([
         StructField("city", StringType(), True),
         StructField("country", StringType(), True),
         StructField("admin1", StringType(), True),  # région/état
+        StructField("region", StringType(), True),  # Pour partitionnement HDFS
+        StructField("continent", StringType(), True),  # Pour partitionnement HDFS
         StructField("timestamp", LongType(), True),  # epoch seconds
+        StructField("date", StringType(), True),  # Format YYYY-MM-DD
+        StructField("hour", StringType(), True),  # Format HH
         StructField("weather", StructType([
             StructField("temperature", DoubleType(), True),
             StructField("windspeed", DoubleType(), True),
@@ -106,6 +110,8 @@ def main() -> None:
         col("data.city").alias("city"),
         col("data.country").alias("country"),
         col("data.admin1").alias("admin1"),
+        col("data.region").alias("region"),
+        col("data.continent").alias("continent"),
         when(
             col("data.weather.time").isNotNull(), 
             to_timestamp(col("data.weather.time"))
@@ -149,7 +155,9 @@ def main() -> None:
         col("heat_alert_level"),
         coalesce(col("city"), lit("Unknown")).alias("city"),
         coalesce(col("country"), lit("Unknown")).alias("country"),
-        coalesce(col("admin1"), lit("")).alias("admin1")
+        coalesce(col("admin1"), lit("")).alias("admin1"),
+        coalesce(col("region"), lit("Unknown")).alias("region"),
+        coalesce(col("continent"), lit("Unknown")).alias("continent")
     )
     
     # Plus besoin de mapping coordonnées -> ville car on a déjà city/country
@@ -160,7 +168,9 @@ def main() -> None:
     window_1min_df = joined_with_location.groupBy(
         window(col("event_time"), "1 minute", "30 seconds"),
         col("city"),
-        col("country")
+        col("country"),
+        col("region"),
+        col("continent")
     ).agg(
         # Alertes vent
         count(when(col("wind_alert_level") == "level_1", 1)).alias("wind_alerts_level1"),
@@ -183,6 +193,8 @@ def main() -> None:
         lit("1_minute").alias("window_size"),
         col("city"),
         col("country"),
+        col("region"),
+        col("continent"),
         col("wind_alerts_level1"),
         col("wind_alerts_level2"),
         col("heat_alerts_level1"),
@@ -198,7 +210,9 @@ def main() -> None:
     window_5min_df = joined_with_location.groupBy(
         window(col("event_time"), "5 minutes", "1 minute"),
         col("city"),
-        col("country")
+        col("country"),
+        col("region"),
+        col("continent")
     ).agg(
         # Alertes vent
         count(when(col("wind_alert_level") == "level_1", 1)).alias("wind_alerts_level1"),
@@ -221,6 +235,8 @@ def main() -> None:
         lit("5_minutes").alias("window_size"),
         col("city"),
         col("country"),
+        col("region"),
+        col("continent"),
         col("wind_alerts_level1"),
         col("wind_alerts_level2"),
         col("heat_alerts_level1"),

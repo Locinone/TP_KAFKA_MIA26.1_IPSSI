@@ -13,6 +13,33 @@ services:
     ports:
       - "2181:2181"
 
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+
   kafka:
     image: wurstmeister/kafka
     ports:
@@ -125,6 +152,22 @@ services:
 
 
 
+  spark-hdfs-writer:
+    build: ./spark-hdfs-writer
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SOURCE_TOPIC: weather_stream
+      HDFS_NAMENODE: hdfs://namenode:9000
+      HDFS_PATH: /weather-data
+      CHECKPOINT_DIR: /tmp/checkpoints/hdfs_writer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      namenode:
+        condition: service_started
+
 volumes:
   grafana-storage: {}
+  hadoop_namenode: {}
+  hadoop_datanode: {}
 
