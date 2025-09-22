@@ -21,8 +21,15 @@ while producer is None:
         print(f"❌ Kafka not ready yet: {e}")
         time.sleep(2)
 
-def send_dummy(message="Hello Kafka"):
-   return  {"msg": message}
+def generate_weather_event():
+    stations = ["paris_centre", "lyon_est", "marseille_vieuxport", "lille_nord", "toulouse_sud"]
+    return {
+        "id": f"evt_{random.randint(100000, 999999)}",
+        "timestamp": int(time.time()),
+        "temperature": round(random.uniform(10.0, 45.0), 1),
+        "windspeed": round(random.uniform(0.0, 35.0), 1),
+        "station": random.choice(stations)
+    }
 
 def generate_data():
     return {
@@ -44,10 +51,9 @@ def generate_data():
 if __name__ == "__main__":
     while True:
         try:
-            # data = generate_data()
-            data = send_dummy()
+            data = generate_weather_event()
             producer.send(TOPIC, data)
-            print(f"🚀 Data sent: {data}")
+            print(f"🌦️ Weather sent: {data}")
             time.sleep(1)
         except Exception as e:
             print(f"❌ Failed to send data: {e}")
