@@ -20,7 +20,7 @@ services:
     environment:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_HOST_NAME: kafka
-      KAFKA_CREATE_TOPICS: "weather_stream:1:1"
+      KAFKA_CREATE_TOPICS: "weather_stream:1:1,weather_transformed:1:1"
     depends_on:
       - zookeeper
     healthcheck:
@@ -38,6 +38,26 @@ services:
   data-consumer:
     build:
       context: ./kafka-consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: ["python", "kafka_consumer.py", "weather_stream"]
+
+  data-consumer-transformed:
+    build:
+      context: ./kafka-consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: ["python", "kafka_consumer.py", "weather_transformed"]
+
+  spark-app:
+    build: ./spark-app
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SOURCE_TOPIC: weather_stream
+      SINK_TOPIC: weather_transformed
+      CHECKPOINT_DIR: /tmp/checkpoints/weather_transformed
     depends_on:
       kafka:
         condition: service_healthy
