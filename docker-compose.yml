@@ -38,6 +38,16 @@ services:
       - ./kafka-producer:/app
     working_dir: /app
 
+  data-consumer:
+    build:
+      context: ./kafka-consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka-consumer:/app
+    working_dir: /app
+
 
 
 volumes:
