@@ -36,35 +36,104 @@ def build_weather_stream_schema() -> StructType:
         ]), True),
     ])
 
+def is_namenode_in_safemode(namenode_host: str = "namenode", http_port: int = 9870) -> bool:
+    """Retourne True si le NameNode est en SafeMode, sinon False.
+
+    S'appuie sur l'endpoint JMX NameNodeInfo.Safemode (string vide s'il est OFF).
+    """
+    try:
+        jmx_url = f"http://{namenode_host}:{http_port}/jmx?get=Hadoop:service=NameNode,name=NameNodeInfo::Safemode"
+        resp = requests.get(jmx_url, timeout=3)
+        if resp.ok:
+            data = resp.json()
+            beans = data.get("beans", [])
+            if beans:
+                safemode_str = beans[0].get("Safemode", "") or ""
+                return len(safemode_str.strip()) > 0
+    except Exception:
+        # En cas d'erreur réseau, être conservateur pendant le démarrage
+        return True
+    return False
+
+def wait_for_safemode_exit(max_wait_seconds: int = 60) -> None:
+    """Attend la sortie du SafeMode (jusqu'à max_wait_seconds)."""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_seconds:
+        if not is_namenode_in_safemode():
+            return
+        time.sleep(2)
+    # On sort quand même après le délai, au cas où (les écritures auront des retries)
+
 def write_to_hdfs_webhdfs(data, hdfs_namenode, hdfs_path):
     """Écrire des données dans HDFS via l'API WebHDFS"""
     try:
         # Créer le chemin de partitionnement
         city = data.get('city', 'Unknown')
         country = data.get('country', 'Unknown')
-        date = time.strftime("%Y-%m-%d")
-        hour = time.strftime("%H")
-        
+
+        # Extraire la date et l'heure depuis le timestamp ou weather.time
+        weather_time = data.get('weather', {}).get('time')
+        if weather_time:
+            # Format: "2025-09-22T20:30" -> date="2025-09-22", hour="20"
+            date = weather_time.split('T')[0]
+            hour = weather_time.split('T')[1].split(':')[0]
+        else:
+            # Fallback sur le timestamp epoch
+            timestamp = data.get('timestamp', int(time.time()))
+            date = time.strftime("%Y-%m-%d", time.gmtime(timestamp))
+            hour = time.strftime("%H", time.gmtime(timestamp))
+
         partition_path = f"{hdfs_path}/city={city}/country={country}/date={date}/hour={hour}"
-        
-        # Créer le répertoire si nécessaire
+
+        # URL WebHDFS
         create_dir_url = f"http://namenode:9870/webhdfs/v1{partition_path}?op=MKDIRS"
-        response = requests.put(create_dir_url)
-        
-        # Écrire le fichier
         filename = f"weather_{int(time.time() * 1000)}.json"
         file_path = f"{partition_path}/{filename}"
-        
         write_url = f"http://namenode:9870/webhdfs/v1{file_path}?op=CREATE&overwrite=true"
-        response = requests.put(write_url, data=json.dumps(data, indent=2))
-        
-        if response.status_code == 201:
-            print(f"✅ Écrit dans HDFS: {file_path}")
-            return True
-        else:
+
+        # Politique de retry simple sur SafeMode (403/500 avec SafeModeException)
+        max_retries = 10
+        backoff_seconds = 2
+
+        # S'assurer que le répertoire existe (best-effort)
+        try:
+            requests.put(create_dir_url, timeout=5)
+        except Exception:
+            pass
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = requests.put(write_url, data=json.dumps(data, indent=2), timeout=10)
+            except Exception as e:
+                # Réessayer sur erreurs transitoires réseau
+                if attempt == max_retries:
+                    print(f"❌ Erreur WebHDFS (réseau): {e}")
+                    return False
+                time.sleep(backoff_seconds)
+                backoff_seconds = min(backoff_seconds * 2, 20)
+                continue
+
+            if response.status_code == 201:
+                print(f"✅ Écrit dans HDFS: {file_path}")
+                return True
+
+            body = (response.text or "").lower()
+            is_safemode_error = response.status_code in (403, 500) and ("safemode" in body or "safe mode" in body)
+            if is_safemode_error and attempt < max_retries:
+                # Attendre sortie du safemode puis retry avec backoff
+                wait_for_safemode_exit(max_wait_seconds=30)
+                time.sleep(backoff_seconds)
+                backoff_seconds = min(backoff_seconds * 2, 20)
+                continue
+
+            # Autres erreurs -> pas de retry
             print(f"❌ Erreur écriture HDFS: {response.status_code} - {response.text}")
             return False
-            
+
+        # Épuisement des retries
+        print("❌ Abandon après plusieurs tentatives en SafeMode")
+        return False
+
     except Exception as e:
         print(f"❌ Erreur WebHDFS: {e}")
         return False
@@ -108,16 +177,13 @@ def main() -> None:
     def write_batch(batch_df, batch_id):
         """Fonction pour écrire chaque batch dans HDFS"""
         print(f"📝 Traitement du batch {batch_id}")
+        # Si le NN est en SafeMode, attendre un court instant
+        wait_for_safemode_exit(max_wait_seconds=60)
         
-        # Convertir le DataFrame en liste de dictionnaires
-        rows = batch_df.collect()
-        
-        for row in rows:
+        # Itérer en streaming pour éviter de charger tout le batch en mémoire/disque
+        for row in batch_df.toLocalIterator():
             data = row.asDict()
-            # Convertir les objets Row en dictionnaires simples
             data = {k: v for k, v in data.items() if v is not None}
-            
-            # Écrire dans HDFS
             write_to_hdfs_webhdfs(data, hdfs_namenode, hdfs_path)
     
     # Écrire dans HDFS avec foreachBatch

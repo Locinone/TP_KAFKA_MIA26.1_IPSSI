@@ -1,23 +1,36 @@
-FROM bitnami/spark:3.5
+
+
+
+
+
+
+
+
+
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||FROM bitnami/spark:3.5
 
 USER root
 
+# Create dedicated sparkuser
+RUN adduser --disabled-password --gecos '' --shell /bin/bash --uid 1001 sparkuser
+
 # Create directories for Ivy cache and set permissions
 RUN mkdir -p /opt/bitnami/.ivy2 /opt/bitnami/.m2 && \
-    chown -R 1001:1001 /opt/bitnami/.ivy2 /opt/bitnami/.m2
+    chown -R sparkuser:sparkuser /opt/bitnami/.ivy2 /opt/bitnami/.m2
 
 # Copy the aggregates job
 COPY spark_aggregates.py /opt/spark-job/spark_aggregates.py
-RUN chown 1001:1001 /opt/spark-job/spark_aggregates.py
+RUN chown sparkuser:sparkuser /opt/spark-job/spark_aggregates.py
 
 # Set working directory
 WORKDIR /opt/spark-job
 
-# Switch back to non-root user
-USER 1001
+# Switch to sparkuser
+USER sparkuser
 
 # Set HOME environment variable
-ENV HOME=/opt/bitnami
+ENV HOME=/home/sparkuser
+ENV HADOOP_USER_NAME=sparkuser
 
 # Run the Spark aggregates job
 ENTRYPOINT ["spark-submit", \

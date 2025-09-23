@@ -17,6 +17,11 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, L
 def build_weather_schema() -> StructType:
     return StructType(
         [
+            # Optional enriched fields coming from producer v2
+            StructField("city", StringType(), True),
+            StructField("country", StringType(), True),
+
+            # Original coordinate-based producer fields
             StructField("latitude", DoubleType(), True),
             StructField("longitude", DoubleType(), True),
             StructField("timestamp", LongType(), True),  # epoch seconds
@@ -82,6 +87,9 @@ def main() -> None:
         col("data.weather.time").alias("event_time_str"),
         col("data.weather.temperature").cast("double").alias("temperature_c"),
         col("data.weather.windspeed").cast("double").alias("windspeed_kmh"),
+        # Preserve city/country when present in the source
+        col("data.city").alias("city"),
+        col("data.country").alias("country"),
     )
 
     # Determine event_time in priority order: weather.time -> producer epoch -> Kafka timestamp
@@ -113,6 +121,9 @@ def main() -> None:
         spark_round(windspeed_ms, 2).alias("windspeed"),
         wind_alert_level,
         heat_alert_level,
+        # Carry over city/country
+        col("city"),
+        col("country"),
     )
 
     out_df = transformed_df.select(to_json(struct(*[col(c) for c in transformed_df.columns])).alias("value"))

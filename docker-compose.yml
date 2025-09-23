@@ -7,6 +7,11 @@ services:
       - '3000:3000'
     volumes:
       - grafana-storage:/var/lib/grafana
+      - ./docs/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource,marcusolsson-json-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
 
   zookeeper:
     image: wurstmeister/zookeeper
@@ -55,7 +60,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    command:
+      - --kafka.server=kafka:9092
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    ports:
+      - "8123:8123"
+      - "9001:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+
   data-producer:
     build: ./kafka-producer
     depends_on:
@@ -111,6 +141,7 @@ services:
 
   data-consumer-transformed:
     build:
+    
       context: ./kafka-consumer
     depends_on:
       kafka:
@@ -181,8 +212,21 @@ services:
       namenode:
         condition: service_started
 
+  analytics-api:
+    build: ./analytics-api
+    environment:
+      WEBHDFS_BASE: http://namenode:9870/webhdfs/v1
+      WEATHER_DATA_PATH: /weather-data
+      ALERTS_PATH: /hdfs-data
+    ports:
+      - "8000:8000"
+    depends_on:
+      namenode:
+        condition: service_started
+
 volumes:
   grafana-storage: {}
   hadoop_namenode: {}
   hadoop_datanode: {}
+  clickhouse-data: {}
 

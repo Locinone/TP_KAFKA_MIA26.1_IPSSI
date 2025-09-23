@@ -1,0 +1,131 @@
+{
+  "id": null,
+  "uid": "weather-hdfs",
+  "title": "Weather Analytics (HDFS)",
+  "tags": ["weather", "hdfs", "json"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Température au fil du temps",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 0},
+      "datasource": {
+        "type": "marcusolsson-json-datasource",
+        "name": "AnalyticsAPI"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "method": "GET",
+          "urlPath": "/metrics/temperature",
+          "queryParams": [["city", "$city"], ["country", "$country"], ["limit", "500"]],
+          "rootSelector": "$",
+          "fields": [
+            {"name": "time", "jsonPath": "$.\u002a.event_time"},
+            {"name": "value", "jsonPath": "$.\u002a.temperature"}
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "celsius"},
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Vitesse du vent au fil du temps",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 0},
+      "datasource": {
+        "type": "marcusolsson-json-datasource",
+        "name": "AnalyticsAPI"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "method": "GET",
+          "urlPath": "/metrics/windspeed",
+          "queryParams": [["city", "$city"], ["country", "$country"], ["limit", "500"]],
+          "rootSelector": "$",
+          "fields": [
+            {"name": "time", "jsonPath": "$.\u002a.event_time"},
+            {"name": "value", "jsonPath": "$.\u002a.windspeed"}
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "m/s"},
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Nombre d’alertes par niveau (vent et chaleur)",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 9},
+      "datasource": {
+        "type": "marcusolsson-json-datasource",
+        "name": "AnalyticsAPI"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "method": "GET",
+          "urlPath": "/metrics/alerts/counts",
+          "queryParams": [["city", "$city"], ["country", "$country"], ["limit", "500"]],
+          "rootSelector": "$",
+          "fields": [
+            {"name": "metric", "jsonPath": "$.wind.level_1", "alias": "vent_level_1"},
+            {"name": "metric", "jsonPath": "$.wind.level_2", "alias": "vent_level_2"},
+            {"name": "metric", "jsonPath": "$.heat.level_1", "alias": "chaleur_level_1"},
+            {"name": "metric", "jsonPath": "$.heat.level_2", "alias": "chaleur_level_2"}
+          ]
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Code météo le plus fréquent (par pays)",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 9},
+      "datasource": {
+        "type": "marcusolsson-json-datasource",
+        "name": "AnalyticsAPI"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "method": "GET",
+          "urlPath": "/metrics/weathercode/top",
+          "queryParams": [["country", "$country"], ["limit", "1000"]],
+          "rootSelector": "$.counts",
+          "fields": [
+            {"name": "key", "jsonPath": "$.\u002a~|key|"},
+            {"name": "value", "jsonPath": "$.\u002a"}
+          ]
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "city",
+        "type": "custom",
+        "query": ",Paris,London,New York,Unknown",
+        "current": {"text": "(All)", "value": ""},
+        "includeAll": false
+      },
+      {
+        "name": "country",
+        "type": "custom",
+        "query": ",France,United Kingdom,United States",
+        "current": {"text": "(All)", "value": ""},
+        "includeAll": false
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"}
+}
+
+

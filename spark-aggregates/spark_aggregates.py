@@ -136,33 +136,20 @@ def main() -> None:
         col("data.heat_alert_level").alias("heat_alert_level")
     )
     
-    # Définir watermark pour gérer les données en retard (5 minutes de tolérance)
-    stream_with_watermark = parsed_stream.withWatermark("event_time_stream", "5 minutes")
-    transformed_with_watermark = parsed_transformed.withWatermark("event_time_transformed", "5 minutes")
-    
-    # Jointure sur event_time avec tolérance de 30 secondes
-    joined_df = transformed_with_watermark.join(
-        stream_with_watermark,
-        expr("""
-            abs(unix_timestamp(event_time_transformed) - unix_timestamp(event_time_stream)) <= 30
-        """),
-        "left"
-    ).select(
-        coalesce(col("event_time_transformed"), col("event_time_stream")).alias("event_time"),
+    # Utiliser directement weather_transformed qui contient maintenant city/country
+    # Ajouter watermark pour les fenêtres glissantes
+    joined_with_location = parsed_transformed.withWatermark("event_time_transformed", "5 minutes").select(
+        col("event_time_transformed").alias("event_time"),
         col("temperature"),
         col("windspeed"),
         col("wind_alert_level"),
         col("heat_alert_level"),
         coalesce(col("city"), lit("Unknown")).alias("city"),
         coalesce(col("country"), lit("Unknown")).alias("country"),
-        coalesce(col("admin1"), lit("")).alias("admin1"),
-        coalesce(col("region"), lit("Unknown")).alias("region"),
-        coalesce(col("continent"), lit("Unknown")).alias("continent")
+        lit("").alias("admin1"),
+        lit("Unknown").alias("region"),
+        lit("Unknown").alias("continent")
     )
-    
-    # Plus besoin de mapping coordonnées -> ville car on a déjà city/country
-    # Utiliser directement les données de géocodage
-    joined_with_location = joined_df
     
     # Agrégats sur fenêtre de 1 minute
     window_1min_df = joined_with_location.groupBy(
@@ -259,7 +246,7 @@ def main() -> None:
     # Écrire dans la console pour debug
     console_query = (
         all_aggregates.writeStream
-        .outputMode("update")
+        .outputMode("append")
         .format("console")
         .option("truncate", False)
         .trigger(processingTime="30 seconds")
@@ -273,7 +260,7 @@ def main() -> None:
         .option("kafka.bootstrap.servers", kafka_bootstrap)
         .option("topic", "weather_aggregates")
         .option("checkpointLocation", checkpoint_dir)
-        .outputMode("update")
+        .outputMode("append")
         .trigger(processingTime="30 seconds")
         .start()
     )
