@@ -166,6 +166,21 @@ services:
       namenode:
         condition: service_started
 
+  alerts-consumer:
+    build: ./kafka-consumer
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC: weather_transformed
+      WEBHDFS_BASE: http://namenode:9870/webhdfs/v1
+      HDFS_BASE_PATH: /hdfs-data
+      DEFAULT_COUNTRY: France
+      DEFAULT_CITY: Paris
+    depends_on:
+      kafka:
+        condition: service_healthy
+      namenode:
+        condition: service_started
+
 volumes:
   grafana-storage: {}
   hadoop_namenode: {}

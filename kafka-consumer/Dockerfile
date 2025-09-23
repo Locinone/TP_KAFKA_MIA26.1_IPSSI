@@ -2,8 +2,10 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir kafka-python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY kafka_consumer.py ./
+COPY alerts_consumer.py ./
 
-CMD ["python", "kafka_consumer.py", "weather_stream"]
+CMD ["python", "alerts_consumer.py"]
